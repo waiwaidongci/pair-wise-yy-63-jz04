@@ -14,6 +14,7 @@ import {
   SwapIcon
 } from 'tdesign-icons-vue-next';
 import TokenEditor from './components/TokenEditor.vue';
+import LayerGovernance from './components/LayerGovernance.vue';
 import { fetchTokens, submitRelease, type Token } from './api';
 import { useTokenStore } from './store';
 
@@ -40,6 +41,7 @@ const releaseResult = ref('');
 
 const nav = [
   { path: '/', label: '令牌工作区', icon: 'token' },
+  { path: '/layers', label: '继承链与发布门禁', icon: 'layers' },
   { path: '/graph', label: '依赖与校验', icon: 'control-platform' },
   { path: '/review', label: '变更评审', icon: 'git-commit' },
   { path: '/publish', label: '主题发布', icon: 'send' }
@@ -198,6 +200,10 @@ function publish() {
             </div>
             <div class="panel validation-summary"><div class="panel-head"><div><strong>快速校验</strong><span>发布前门禁摘要</span></div><strong class="score">{{ store.releaseReadiness }}%</strong></div><div class="summary-row" :class="{ bad: store.cycleNodes.length }"><span>循环依赖</span><strong>{{ store.cycleNodes.length ? `${store.cycleNodes.length} 个节点` : '未发现' }}</strong></div><div class="summary-row" :class="{ bad: store.invalidReferences.length }"><span>无效引用</span><strong>{{ store.invalidReferences.length || '未发现' }}</strong></div><div class="summary-row" :class="{ bad: store.contrastIssues.length }"><span>对比度</span><strong>{{ store.contrastIssues.length ? '需调整' : '符合 AA' }}</strong></div><div class="summary-row"><span>命名冲突</span><strong>未发现</strong></div></div>
           </aside>
+        </section>
+
+        <section v-else-if="route.path === '/layers'">
+          <LayerGovernance />
         </section>
 
         <section v-else-if="route.path === '/graph'" class="graph-page panel">

@@ -4,6 +4,7 @@ export default createRouter({
   history: createWebHashHistory(),
   routes: [
     { path: '/', component: { template: '<div />' } },
+    { path: '/layers', component: { template: '<div />' } },
     { path: '/graph', component: { template: '<div />' } },
     { path: '/review', component: { template: '<div />' } },
     { path: '/publish', component: { template: '<div />' } }
