@@ -14,8 +14,10 @@ import {
   SwapIcon
 } from 'tdesign-icons-vue-next';
 import TokenEditor from './components/TokenEditor.vue';
+import LayersPage from './views/LayersPage.vue';
 import { fetchTokens, submitRelease, type Token } from './api';
 import { useTokenStore } from './store';
+import { PLATFORMS } from './layers';
 
 const AddButtonIcon = () => h(AddIcon);
 const ArrowRightButtonIcon = () => h(ArrowRightIcon);
@@ -40,6 +42,7 @@ const releaseResult = ref('');
 
 const nav = [
   { path: '/', label: '令牌工作区', icon: 'token' },
+  { path: '/layers', label: '继承链', icon: 'layers' },
   { path: '/graph', label: '依赖与校验', icon: 'control-platform' },
   { path: '/review', label: '变更评审', icon: 'git-commit' },
   { path: '/publish', label: '主题发布', icon: 'send' }
@@ -139,9 +142,12 @@ function batchReplace() {
 }
 
 function publish() {
+  if (!store.publish()) {
+    router.push('/publish');
+    return;
+  }
   const accepted = store.changes.filter((item) => item.status === '已接受').map((item) => item.id);
   releaseMutation.mutate({ version: selectedVersion.value, accepted, actor: '设计系统维护员' });
-  store.lockRelease();
   releaseDialog.value = true;
 }
 </script>
@@ -158,13 +164,13 @@ function publish() {
     <t-layout class="body-layout">
       <t-aside class="side-nav">
         <div class="workspace-card"><t-icon name="layers" /><div><span>当前工作区</span><strong>通用组件库 · 品牌主题</strong><small>15 个令牌 · 4 个主题变体</small></div></div>
-        <nav><button v-for="item in nav" :key="item.path" :class="{ active: route.path === item.path }" @click="go(item.path)"><t-icon :name="item.icon" /><span>{{ item.label }}</span><t-badge v-if="item.path === '/review'" :count="store.changes.filter(c => c.status === '待评审').length" /></button></nav>
+        <nav><button v-for="item in nav" :key="item.path" :class="{ active: route.path === item.path }" @click="go(item.path)"><t-icon :name="item.icon" /><span>{{ item.label }}</span><t-badge v-if="item.path === '/review'" :count="store.changes.filter(c => c.status === '待评审').length" /><t-badge v-if="item.path === '/layers' && store.stalePins.length" :count="store.stalePins.length" /></button></nav>
         <div class="save-state"><t-icon name="cloud-done" /><div><span>草稿已保存</span><small>{{ new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) }}</small></div></div>
       </t-aside>
       <t-content class="main-content">
         <header class="page-heading">
           <div><small>{{ store.locked ? 'RELEASE LOCKED' : 'GOVERNANCE WORKBENCH' }} / {{ pageTitle }}</small><h1>{{ pageTitle }}</h1><p>基础令牌到语义令牌的引用、差异、校验与跨主题发布。</p></div>
-          <div class="heading-actions"><t-select v-model="store.activeTheme" style="width: 150px" :options="[{label:'明亮模式',value:'light'},{label:'暗色模式',value:'dark'},{label:'运营模式',value:'ops'},{label:'高对比度',value:'contrast'}]" /><t-button variant="outline" :icon="AddButtonIcon" @click="newTokenDialog = true">新建令牌</t-button><t-button theme="primary" :icon="LockButtonIcon" :disabled="store.locked" @click="publish">发布主题</t-button></div>
+          <div class="heading-actions"><t-select v-model="store.activePlatform" style="width: 150px" :options="PLATFORMS.map(p => ({ label: p.label, value: p.id }))" /><t-select v-model="store.activeTheme" style="width: 150px" :options="[{label:'明亮模式',value:'light'},{label:'暗色模式',value:'dark'},{label:'运营模式',value:'ops'},{label:'高对比度',value:'contrast'}]" /><t-button variant="outline" :icon="AddButtonIcon" @click="newTokenDialog = true">新建令牌</t-button><t-button theme="primary" :icon="LockButtonIcon" :disabled="store.locked" @click="publish">发布主题</t-button></div>
         </header>
 
         <section v-if="route.path === '/'" class="token-workspace">
@@ -216,6 +222,10 @@ function publish() {
           <div class="validation-strip"><div class="validation-card"><t-icon name="check-circle" theme="success" /><div><strong>循环依赖</strong><span>{{ store.cycleNodes.length ? store.cycleNodes.join(' → ') : '未发现循环引用路径' }}</span></div></div><div class="validation-card"><t-icon :name="store.invalidReferences.length ? 'error-circle' : 'check-circle'" :theme="store.invalidReferences.length ? 'danger' : 'success'" /><div><strong>引用完整性</strong><span>{{ store.invalidReferences.length ? store.invalidReferences.map(t => t.ref).join('、') : '所有引用均指向已发布令牌' }}</span></div></div><div class="validation-card"><t-icon :name="store.contrastIssues.length ? 'error-circle' : 'check-circle'" :theme="store.contrastIssues.length ? 'danger' : 'success'" /><div><strong>对比度检查</strong><span>{{ store.contrastIssues[0]?.detail ?? '正文与背景对比度 13.8:1' }}</span></div></div></div>
         </section>
 
+        <section v-else-if="route.path === '/layers'" class="layers-route">
+          <LayersPage />
+        </section>
+
         <section v-else-if="route.path === '/review'" class="review-page">
           <div class="review-summary panel"><div><span>待评审变更</span><strong>{{ store.changes.filter(c => c.status === '待评审').length }}</strong></div><div><span>已接受</span><strong>{{ store.changes.filter(c => c.status === '已接受').length }}</strong></div><div><span>已退回</span><strong>{{ store.changes.filter(c => c.status === '已退回').length }}</strong></div><div><span>受影响组件</span><strong>48</strong></div></div>
           <div class="review-grid">
@@ -231,6 +241,44 @@ function publish() {
         <section v-else class="publish-page">
           <div class="panel publish-main">
             <div class="panel-head"><div><strong>发布准备</strong><span>生成只读版本，支持回滚到历史基线</span></div><t-tag :theme="store.locked ? 'success' : 'warning'">{{ store.locked ? '已锁定' : '候选版本' }}</t-tag></div>
+
+            <div v-if="store.stalePins.length" class="reconfirm-block">
+              <div class="reconfirm-head">
+                <t-icon name="error-circle" />
+                <div><strong>发布已暂停：{{ store.stalePins.length }} 个平台覆盖等待重新确认</strong><span>品牌基础值变更后，被平台单独固定的令牌必须逐个人工确认，未确认前不能锁定发布。</span></div>
+              </div>
+              <div v-for="pin in store.stalePins" :key="`${pin.platform}-${pin.tokenId}`" class="reconfirm-card">
+                <div class="reconfirm-token">
+                  <i :class="pin.chain.find(c => c.tone === 'component') ? 'component' : 'color'" />
+                  <div><strong>{{ pin.tokenName }}</strong><span>{{ pin.tokenId }} · {{ pin.platformLabel }}固定值 · 影响主题：{{ pin.affectedThemeLabels.join('、') }}</span></div>
+                </div>
+                <div class="reconfirm-change">
+                  <span>平台固定值</span><code class="pin">{{ pin.pinValue }}</code><t-icon name="arrow-right" /><span>上游基础值已变为</span><code class="upstream" v-for="c in pin.changedUpstream" :key="c.id">{{ c.after }}</code>
+                </div>
+                <div class="reconfirm-chain">
+                  <span>依赖链</span>
+                  <div class="chain-flow">
+                    <template v-for="(node, idx) in pin.chain" :key="`${node.id}-${idx}`">
+                      <span class="chain-node" :class="node.tone">{{ node.name }}<small>{{ node.layer }}</small></span>
+                      <t-icon v-if="idx < pin.chain.length - 1" name="arrow-right" />
+                    </template>
+                  </div>
+                </div>
+                <div v-if="pin.components.length" class="reconfirm-components">
+                  <span>受影响组件预览（{{ pin.components.reduce((n, c) => n + c.usage, 0) }} 处引用）</span>
+                  <div class="preview-row">
+                    <div class="preview-mock"><button :style="{ background: pin.pinValue }">保留固定值</button><small>{{ pin.pinValue }}</small></div>
+                    <div class="preview-mock"><button :style="{ background: pin.changedUpstream[0]?.after }">采用上游新值</button><small>{{ pin.changedUpstream[0]?.after }}</small></div>
+                  </div>
+                </div>
+                <div v-else class="reconfirm-components"><span>受影响组件</span><strong>无组件别名直接引用</strong></div>
+                <div class="reconfirm-actions">
+                  <t-button size="small" variant="outline" @click="store.revertPin(pin.platform, pin.tokenId)">改为继承上游值</t-button>
+                  <t-button size="small" theme="primary" @click="store.reconfirmPin(pin.platform, pin.tokenId)">确认保留平台固定值</t-button>
+                </div>
+              </div>
+            </div>
+
             <div class="publish-form">
               <label><span>版本号</span><t-input v-model="selectedVersion" /></label>
               <label><span>目标产品</span><t-select multiple value="['组件库','运营后台','移动端组件']" :options="[{label:'组件库',value:'组件库'},{label:'运营后台',value:'运营后台'},{label:'移动端组件',value:'移动端组件'},{label:'数据平台',value:'数据平台'}]" /></label>
@@ -240,9 +288,10 @@ function publish() {
               <label><t-checkbox checked /> 循环依赖检查通过</label>
               <label><t-checkbox checked /> 无效引用检查通过</label>
               <label><t-checkbox :checked="store.contrastIssues.length === 0" /> 颜色对比度符合 WCAG AA</label>
+              <label><t-checkbox :checked="store.stalePins.length === 0" /> 所有平台固定值覆盖已重新确认</label>
               <label><t-checkbox :checked="store.changes.every(c => c.status !== '待评审')" /> 所有变更请求已处理</label>
             </div>
-            <div class="publish-actions"><t-button variant="outline" @click="store.rollback">回滚全部未发布编辑</t-button><t-button theme="primary" icon="lock-on" :disabled="store.locked || store.changes.some(c => c.status === '待评审')" @click="publish">校验并锁定发布</t-button></div>
+            <div class="publish-actions"><t-button variant="outline" @click="store.rollback">回滚全部未发布编辑</t-button><t-button theme="primary" icon="lock-on" :disabled="store.locked || store.publishBlocked" @click="publish">校验并锁定发布</t-button></div>
           </div>
           <aside class="publish-side">
             <div class="panel diff-panel"><div class="panel-head"><div><strong>版本差异</strong><span>相对 {{ store.lastPublished }}</span></div><t-tag>{{ store.diffRows.length }} 项</t-tag></div><div v-for="row in store.diffRows" :key="row.id" class="diff-row"><strong>{{ row.name }}</strong><span>{{ row.id }}</span><div><del>{{ row.before }}</del><ins>{{ row.after }}</ins></div></div><p v-if="!store.diffRows.length" class="empty">暂无未发布差异。</p></div>
